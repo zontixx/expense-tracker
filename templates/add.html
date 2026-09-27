@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+
+{% block title %}记一笔{% endblock %}
+
+{% block content %}
+<h1>记一笔</h1>
+
+<form method="post">
+  <p>类型
+    <label><input type="radio" name="type" value="expense" {% if form.type == "expense" %}checked{% endif %}> 支出</label>
+    <label><input type="radio" name="type" value="income" {% if form.type == "income" %}checked{% endif %}> 收入</label>
+  </p>
+
+  <p>分类
+    <select name="category_id" required>
+      <optgroup label="支出">
+        {% for c in expense_cats %}
+          <option value="{{ c["id"] }}" {% if form.category_id == c["id"]|string %}selected{% endif %}>{{ c["name"] }}</option>
+        {% endfor %}
+      </optgroup>
+      <optgroup label="收入">
+        {% for c in income_cats %}
+          <option value="{{ c["id"] }}" {% if form.category_id == c["id"]|string %}selected{% endif %}>{{ c["name"] }}</option>
+        {% endfor %}
+      </optgroup>
+    </select>
+  </p>
+
+  <p>金额 <input type="number" name="amount" step="0.01" min="0.01" value="{{ form.amount }}" required></p>
+  <p>日期 <input type="date" name="date" value="{{ form.date }}" required></p>
+  <p>备注 <input type="text" name="note" value="{{ form.note }}"></p>
+
+  <button type="submit">保存</button>
+</form>
+{% endblock %}
+

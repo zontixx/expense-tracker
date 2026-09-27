@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h1>{{ this_month }} 概览</h1>
+
+<div class="cards">
+  <div class="card income">
+    <span>本月收入</span>
+    <strong>¥{{ "%.2f"|format(income) }}</strong>
+  </div>
+  <div class="card expense">
+    <span>本月支出</span>
+    <strong>¥{{ "%.2f"|format(expense) }}</strong>
+  </div>
+  <div class="card balance">
+    <span>本月结余</span>
+    <strong>¥{{ "%.2f"|format(income - expense) }}</strong>
+  </div>
+</div>
+
+<h2>最近记录</h2>
+<table>
+  <thead>
+    <tr><th>日期</th><th>类型</th><th>分类</th><th>金额</th><th>备注</th></tr>
+  </thead>
+  <tbody>
+  {% for t in recent %}
+    <tr>
+      <td>{{ t["date"] }}</td>
+      <td>{{ "收入" if t["type"] == "income" else "支出" }}</td>
+      <td>{{ t["category"] }}</td>
+      <td class="{{ t['type'] }}">{{ "%.2f"|format(t["amount"]) }}</td>
+      <td>{{ t["note"] or "" }}</td>
+    </tr>
+  {% else %}
+    <tr><td colspan="5">还没有记录，先去记一笔吧。</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="utf-8">
+  <title>{% block title %}记账{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <nav>
+    <a href="{{ url_for('index') }}">首页</a>
+    <a href="{{ url_for('add') }}">记一笔</a>
+    <a href="{{ url_for('transactions') }}">交易明细</a>
+    <a href="{{ url_for('stats') }}">统计</a>
+  </nav>
+
+
+  <main>
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      {% for category, m in messages %}
+        <p class="flash flash-{{ category }}">{{ m }}</p>
+      {% endfor %}
+    {% endif %}
+    {% endwith %}
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>
+

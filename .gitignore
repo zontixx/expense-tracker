@@ -1,0 +1,9 @@
+# 数据库文件（你本地的记账数据，不应上传）
+expense.db
+
+# Python 缓存
+__pycache__/
+*.pyc
+
+# 本地配置
+.claude/

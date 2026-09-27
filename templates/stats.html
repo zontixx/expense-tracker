@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+
+{% block title %}统计{% endblock %}
+
+{% block content %}
+<style>
+  .bar        { fill: #2a78d6; }
+  .bar-label  { fill: #6b7280; font-size: 12px; }
+  .bar-value  { fill: #1f2933; font-size: 12px; }
+  .grid       { stroke: #e5e7eb; stroke-width: 1; }
+  .axis-label { fill: #6b7280; font-size: 11px; }
+  .legend-dot { display: inline-block; width: 10px; height: 10px;
+                border-radius: 50%; margin-right: 4px; }
+  .card h2    { margin-top: 0; }
+  .cat-row    { display: flex; gap: 2rem; flex-wrap: wrap; align-items: center; }
+  .bar-chart  { flex: 1 1 320px; min-width: 280px; }
+  .donut-wrap { flex: 1 1 240px; min-width: 220px;
+                display: flex; align-items: center; gap: 1rem; }
+  .donut-total{ fill: #1f2933; font-size: 20px; font-weight: 600; }
+  .donut-sub  { fill: #6b7280; font-size: 11px; }
+  .donut-legend { list-style: none; padding: 0; margin: 0; font-size: 13px; }
+  .donut-legend li { margin-bottom: 6px; }
+  .legend-num  { color: #6b7280; margin-left: 0.25rem; }
+</style>
+
+<h1>统计</h1>
+
+{% macro category_chart(title, bars, slices, total, total_label) %}
+<div class="card">
+  <h2>{{ title }}</h2>
+  {% if bars %}
+    <div class="cat-row">
+      <div class="bar-chart">
+        <svg viewBox="0 0 640 {{ bars|length * 30 + 10 }}" width="100%">
+          {% for b in bars %}
+            {% set y = loop.index0 * 30 + 4 %}
+            <text x="105" y="{{ y + 13 }}" text-anchor="end" class="bar-label">{{ b.name }}</text>
+            <rect x="120" y="{{ y }}" width="{{ b.width }}" height="18" rx="4" class="bar"/>
+            <text x="{{ 128 + b.width }}" y="{{ y + 13 }}" class="bar-value">¥{{ "%.2f"|format(b.total) }}</text>
+          {% endfor %}
+        </svg>
+      </div>
+      <div class="donut-wrap">
+        <svg viewBox="0 0 140 140" width="150">
+          <g transform="rotate(-90 70 70)">
+            {% for s in slices %}
+              <circle cx="70" cy="70" r="52" fill="none" stroke="{{ s.color }}" stroke-width="22"
+                      stroke-dasharray="{{ s.dasharray }}" stroke-dashoffset="{{ s.dashoffset }}"/>
+            {% endfor %}
+          </g>
+          <text x="70" y="67" text-anchor="middle" class="donut-total">¥{{ "%.0f"|format(total) }}</text>
+          <text x="70" y="84" text-anchor="middle" class="donut-sub">总{{ total_label }}</text>
+        </svg>
+        <ul class="donut-legend">
+          {% for s in slices %}
+            <li>
+              <span class="legend-dot" style="background:{{ s.color }}"></span>{{ s.name }}
+              <span class="legend-num">¥{{ "%.2f"|format(s.total) }} · {{ s.percent }}%</span>
+            </li>
+          {% endfor %}
+        </ul>
+      </div>
+    </div>
+  {% else %}
+    <p>本月还没有{{ total_label }}记录。</p>
+  {% endif %}
+</div>
+{% endmacro %}
+
+{{ category_chart(this_month + " 支出分类", expense_bars, expense_slices, expense_total, "支出") }}
+{{ category_chart(this_month + " 收入分类", income_bars, income_slices, income_total, "收入") }}
+
+<div class="card">
+  <h2>近 6 个月收支趋势</h2>
+  <div style="margin-bottom: 0.5rem;">
+    <span><span class="legend-dot" style="background:#2a78d6"></span>收入</span>
+    <span style="margin-left:1rem"><span class="legend-dot" style="background:#eb6834"></span>支出</span>
+  </div>
+
+  <svg viewBox="0 0 640 320" width="100%">
+    {% for tk in ticks %}
+      <line x1="{{ left }}" y1="{{ tk.y }}" x2="{{ right }}" y2="{{ tk.y }}" class="grid"/>
+      <text x="{{ left - 8 }}" y="{{ tk.y + 4 }}" text-anchor="end" class="axis-label">{{ tk.label }}</text>
+    {% endfor %}
+
+    <polyline points="{{ income_line }}" fill="none" stroke="#2a78d6"
+              stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+    {% for p in income_series %}
+      <circle cx="{{ p.x }}" cy="{{ p.y }}" r="4" fill="#2a78d6" stroke="#ffffff" stroke-width="2">
+        <title>{{ p.m }} 收入 ¥{{ "%.2f"|format(p.v) }}</title>
+      </circle>
+    {% endfor %}
+
+    <polyline points="{{ expense_line }}" fill="none" stroke="#eb6834"
+              stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+    {% for p in expense_series %}
+      <circle cx="{{ p.x }}" cy="{{ p.y }}" r="4" fill="#eb6834" stroke="#ffffff" stroke-width="2">
+        <title>{{ p.m }} 支出 ¥{{ "%.2f"|format(p.v) }}</title>
+      </circle>
+    {% endfor %}
+
+    {% for ml in month_labels %}
+      <text x="{{ ml.x }}" y="{{ bottom + 20 }}" text-anchor="middle" class="axis-label">{{ ml.label }}</text>
+    {% endfor %}
+  </svg>
+</div>
+{% endblock %}
+
+
