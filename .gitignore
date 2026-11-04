@@ -1,4 +1,4 @@
-# 数据库文件（你本地的记账数据，不应上传）
+# 数据库文件（本地的记账数据，不应上传）
 expense.db
 
 # Python 缓存
@@ -7,3 +7,9 @@ __pycache__/
 
 # 本地配置
 .claude/
+
+# 演示数据库（由 seed_demo.py 生成）
+demo.db
+
+# VSCode 本地配置
+.vscode/

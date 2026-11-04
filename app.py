@@ -2,10 +2,18 @@ from flask import Flask, render_template, request, redirect, url_for,flash
 from datetime import datetime
 import db
 import math
+import os
+import sys
+from pathlib import Path
 
 app = Flask(__name__)
-app.secret_key = "dev-secret-key-change-me"  # flash会话用到的签名密钥
+app.secret_key = os.environ.get("SECRET_KEY", "dev-secret-key-change-me")
+
+if "--demo" in sys.argv or os.environ.get("EXPENSE_DEMO") == "1":
+    db.DB_PATH = Path(__file__).parent / "demo.db"
+
 db.init_db()
+
 
 def get_categories(conn):
     """返回所有分类 """
