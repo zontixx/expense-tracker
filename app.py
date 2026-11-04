@@ -11,10 +11,17 @@ from pathlib import Path
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "dev-secret-key-change-me")
 
-if "--demo" in sys.argv or os.environ.get("EXPENSE_DEMO") == "1":
+DEMO_MODE = "--demo" in sys.argv or os.environ.get("EXPENSE_DEMO") == "1"
+if DEMO_MODE:
     db.DB_PATH = Path(__file__).parent / "demo.db"
 
 db.init_db()
+
+
+@app.context_processor
+def inject_demo_mode():
+    return {"demo_mode": DEMO_MODE}
+
 
 
 def get_categories(conn):

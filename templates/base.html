@@ -11,6 +11,7 @@
     <a href="{{ url_for('add') }}">记一笔</a>
     <a href="{{ url_for('transactions') }}">交易明细</a>
     <a href="{{ url_for('stats') }}">统计</a>
+    {% if demo_mode %}<span class="demo-badge">演示数据</span>{% endif %}
   </nav>
 
 
