@@ -1,7 +1,9 @@
 from flask import Flask, render_template, request, redirect, url_for,flash  
-from datetime import datetime
+from datetime import datetime,timedelta
 import db
 import math
+import calendar
+import statistics
 import os
 import sys
 from pathlib import Path
@@ -64,6 +66,180 @@ def validate_transaction(form, conn):
     data = {"type": typ, "amount": amount, "category_id": category_id,
             "date": date, "note": note}
     return errors, data
+def last_complete_month():
+    """返回最近一个已结束的月份，例如 2026-11-04 -> '2026-10'"""
+    first_of_this_month = datetime.now().replace(day=1)
+    return (first_of_this_month - timedelta(days=1)).strftime("%Y-%m")
+
+
+def month_bounds(month):
+    """返回该月的 [开始, 下月开始) 两个日期字符串"""
+    y, m = int(month[:4]), int(month[5:7])
+    start = f"{y:04d}-{m:02d}-01"
+    if m == 12:
+        end = f"{y + 1:04d}-01-01"
+    else:
+        end = f"{y:04d}-{m + 1:02d}-01"
+    return start, end
+
+
+def month_range(n, end_month=None):
+    """返回截至 end_month（含）的最近 n 个月，从旧到新"""
+    if end_month:
+        y, m = int(end_month[:4]), int(end_month[5:7])
+    else:
+        now = datetime.now()
+        y, m = now.year, now.month
+    out = []
+    for _ in range(n):
+        out.append(f"{y:04d}-{m:02d}")
+        m -= 1
+        if m == 0:
+            m = 12
+            y -= 1
+    out.reverse()
+    return out
+
+
+def pct_change(current, previous):
+    """环比变化百分比；上期为 0 时返回 None"""
+    if not previous:
+        return None
+    return (current - previous) / previous * 100
+
+
+def build_month_analysis(conn, month):
+    """计算某个月的收入、支出、环比、储蓄率、异常支出等指标"""
+    y, m = int(month[:4]), int(month[5:7])
+    days = calendar.monthrange(y, m)[1]
+    prev_month = month_range(2, month)[0]
+
+    # CTE + LAG：先把上月和本月拼成两行，再用窗口函数取上一行
+    sql = """
+    WITH months(month) AS (VALUES (?), (?)),
+    monthly AS (
+        SELECT m.month,
+               COALESCE(SUM(CASE WHEN t.type = 'income'  THEN t.amount END), 0) AS income,
+               COALESCE(SUM(CASE WHEN t.type = 'expense' THEN t.amount END), 0) AS expense
+        FROM months m
+        LEFT JOIN transactions t ON substr(t.date, 1, 7) = m.month
+        GROUP BY m.month
+    ),
+    with_prev AS (
+        SELECT month, income, expense,
+               LAG(income)  OVER (ORDER BY month) AS prev_income,
+               LAG(expense) OVER (ORDER BY month) AS prev_expense
+        FROM monthly
+    )
+    SELECT * FROM with_prev WHERE month = ?
+    """
+    cur = conn.execute(sql, (prev_month, month, month)).fetchone()
+
+    income = cur["income"]
+    expense = cur["expense"]
+    balance = income - expense
+    savings_rate = balance / income * 100 if income else None
+    daily_avg = expense / days
+
+    # 最大支出分类
+    top = conn.execute("""
+        SELECT c.name, SUM(t.amount) AS total
+        FROM transactions t
+        JOIN categories c ON c.id = t.category_id
+        WHERE t.type = 'expense' AND t.date LIKE ?
+        GROUP BY c.name
+        ORDER BY total DESC
+        LIMIT 1
+    """, (month + "%",)).fetchone()
+    top_share = top["total"] / expense * 100 if top and expense else 0
+
+    # 异常检测：剔除居住（房租固定），按均值 + 2σ 找异常
+    expense_rows = conn.execute("""
+        SELECT t.amount, t.date, t.note, c.name AS category
+        FROM transactions t
+        JOIN categories c ON c.id = t.category_id
+        WHERE t.type = 'expense' AND t.date LIKE ? AND c.name <> '居住'
+    """, (month + "%",)).fetchall()
+    amounts = [r["amount"] for r in expense_rows]
+    if len(amounts) >= 3:
+        mean = statistics.mean(amounts)
+        std = statistics.pstdev(amounts)
+        threshold = mean + 2 * std
+        anomalies = sorted(
+            [r for r in expense_rows if r["amount"] > threshold],
+            key=lambda r: r["amount"], reverse=True,
+        )
+    else:
+        mean = std = threshold = 0
+        anomalies = []
+
+    # 最大可变支出分类（剔除房租）
+    variable_top = conn.execute("""
+        SELECT c.name, SUM(t.amount) AS total
+        FROM transactions t
+        JOIN categories c ON c.id = t.category_id
+        WHERE t.type = 'expense' AND t.date LIKE ? AND c.name <> '居住'
+        GROUP BY c.name
+        ORDER BY total DESC
+        LIMIT 1
+    """, (month + "%",)).fetchone()
+    variable_total = sum(amounts)
+
+    # 自动生成中文结论
+    insights = []
+    income_change = pct_change(income, cur["prev_income"])
+    expense_change = pct_change(expense, cur["prev_expense"])
+    balance_change = pct_change(balance, cur["prev_income"] - cur["prev_expense"])
+
+    if income_change is None:
+        insights.append(f"本月收入 ¥{income:,.2f}，支出 ¥{expense:,.2f}。")
+    else:
+        insights.append(
+            f"本月收入 ¥{income:,.2f}（环比 {income_change:+.1f}%），"
+            f"支出 ¥{expense:,.2f}（环比 {expense_change:+.1f}%）。"
+        )
+
+    if top:
+        insights.append(
+            f"{top['name']}支出 ¥{top['total']:,.2f}，"
+            f"占总支出的 {top_share:.1f}%，是最大支出项。"
+        )
+
+    if variable_top:
+        var_share = variable_top["total"] / variable_total * 100 if variable_total else 0
+        insights.append(
+            f"剔除房租后，{variable_top['name']} ¥{variable_top['total']:,.2f} "
+            f"是最大的可变支出，占可变支出的 {var_share:.1f}%。"
+        )
+
+    if anomalies:
+        first = anomalies[0]
+        label = first["note"] or first["category"]
+        insights.append(
+            f"按「均值 + 2σ」识别出 {len(anomalies)} 笔异常支出，"
+            f"最大一笔 ¥{first['amount']:,.2f}（{label}）。"
+        )
+    else:
+        insights.append("本月没有识别到明显的异常支出。")
+
+    return {
+        "month": month,
+        "income": income,
+        "expense": expense,
+        "balance": balance,
+        "income_change": income_change,
+        "expense_change": expense_change,
+        "balance_change": balance_change,
+        "savings_rate": savings_rate,
+        "daily_avg": daily_avg,
+        "days": days,
+        "top": top,
+        "top_share": top_share,
+        "anomaly_count": len(anomalies),
+        "anomaly_max": dict(anomalies[0]) if anomalies else None,
+        "anomaly_threshold": threshold,
+        "insights": insights,
+    }
 
 @app.route("/")
 def index():
@@ -220,20 +396,26 @@ def delete(tx_id):
 @app.route("/stats")
 def stats():
     conn = db.get_db()
-    this_month = datetime.now().strftime("%Y-%m")
+    # 统计最近一个完整月份：月初当月数据不完整，直接做环比会失真
+    this_month = last_complete_month()
 
     # 支出、收入各自的分类图表（条形图 + 环形图）
     expense_bars, expense_slices, expense_total = build_category_chart(conn, "expense", this_month)
     income_bars, income_slices, income_total = build_category_chart(conn, "income", this_month)
 
-    # ===== 折线图：近 6 个月收支 =====
-    months = last_n_months(6)
+    # ===== 折线图：近 6 个完整月收支 =====
+    months = month_range(6, this_month)
+    start = month_bounds(months[0])[0]
+    end = month_bounds(this_month)[1]
     rows = conn.execute("""
         SELECT substr(date, 1, 7) AS m, type, SUM(amount) AS total
         FROM transactions
-        WHERE date >= ?
+        WHERE date >= ? AND date < ?
         GROUP BY m, type
-    """, (months[0] + "-01",)).fetchall()
+    """, (start, end)).fetchall()
+
+    # ===== 月度分析指标 =====
+    analysis = build_month_analysis(conn, this_month)
     conn.close()
 
     by_month = {(r["m"], r["type"]): r["total"] for r in rows}
@@ -272,7 +454,9 @@ def stats():
         income_line=income_line, expense_line=expense_line,
         income_series=income_series, expense_series=expense_series,
         month_labels=month_labels, ticks=ticks,
-        left=left, right=right, bottom=bottom)
+        left=left, right=right, bottom=bottom,
+        analysis=analysis)
+
 
 
 
@@ -287,19 +471,6 @@ def nice_ceil(v):
     return 10 * exp
 
 
-def last_n_months(n):
-    """返回最近 n 个月的 'YYYY-MM'，从旧到新"""
-    now = datetime.now()
-    y, mo = now.year, now.month
-    out = []
-    for _ in range(n):
-        out.append(f"{y:04d}-{mo:02d}")
-        mo -= 1
-        if mo == 0:
-            mo = 12
-            y -= 1
-    out.reverse()
-    return out
 
 # 环形图配色：色盲安全的标准配色，按顺序取
 DONUT_COLORS = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300"]

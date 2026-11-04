@@ -21,9 +21,93 @@
   .donut-legend { list-style: none; padding: 0; margin: 0; font-size: 13px; }
   .donut-legend li { margin-bottom: 6px; }
   .legend-num  { color: #6b7280; margin-left: 0.25rem; }
+    .metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+             gap: 1rem; margin: 1rem 0 1.25rem; }
+  .metric { border: 1px solid #e5e7eb; border-radius: 8px; padding: 0.75rem 1rem; }
+  .metric span { color: #6b7280; font-size: 0.85rem; }
+  .metric strong { display: block; font-size: 1.3rem; margin: 0.2rem 0; }
+  .metric em { font-style: normal; font-size: 0.85rem; color: #6b7280; }
+  .metric .income { color: #16a34a; }
+  .metric .expense { color: #dc2626; }
+  .insights { margin: 0.5rem 0 1rem; padding-left: 1.2rem; line-height: 1.8; }
+  .insights li { margin-bottom: 0.3rem; }
+  .note { color: #6b7280; font-size: 0.85rem; margin: 0; }
+  .analysis h2 small { color: #6b7280; font-size: 0.85rem; font-weight: 400; }
+
 </style>
 
 <h1>统计</h1>
+<div class="card analysis" style="margin-bottom: 2rem;">
+  <h2 style="margin-top: 0;">{{ analysis.month }} 月度分析 <small>（最近完整月份）</small></h2>
+
+  <div class="metrics">
+    <div class="metric">
+      <span>收入</span>
+      <strong class="income">¥{{ "%.2f"|format(analysis.income) }}</strong>
+      {% if analysis.income_change is not none %}
+        <em>环比 {{ "%+.1f"|format(analysis.income_change) }}%</em>
+      {% else %}
+        <em>无上月数据</em>
+      {% endif %}
+    </div>
+
+    <div class="metric">
+      <span>支出</span>
+      <strong class="expense">¥{{ "%.2f"|format(analysis.expense) }}</strong>
+      {% if analysis.expense_change is not none %}
+        <em>环比 {{ "%+.1f"|format(analysis.expense_change) }}%</em>
+      {% else %}
+        <em>无上月数据</em>
+      {% endif %}
+    </div>
+
+    <div class="metric">
+      <span>结余</span>
+      <strong>¥{{ "%.2f"|format(analysis.balance) }}</strong>
+      {% if analysis.balance_change is not none %}
+        <em>环比 {{ "%+.1f"|format(analysis.balance_change) }}%</em>
+      {% else %}
+        <em>无上月数据</em>
+      {% endif %}
+    </div>
+
+    <div class="metric">
+      <span>储蓄率</span>
+      <strong>
+        {% if analysis.savings_rate is not none %}
+          {{ "%.1f"|format(analysis.savings_rate) }}%
+        {% else %}—{% endif %}
+      </strong>
+      <em>结余 / 收入</em>
+    </div>
+
+    <div class="metric">
+      <span>日均支出</span>
+      <strong>¥{{ "%.2f"|format(analysis.daily_avg) }}</strong>
+      <em>按 {{ analysis.days }} 天计</em>
+    </div>
+
+    <div class="metric">
+      <span>异常支出</span>
+      <strong>{{ analysis.anomaly_count }} 笔</strong>
+      {% if analysis.anomaly_max %}
+        <em>最大 ¥{{ "%.2f"|format(analysis.anomaly_max.amount) }}</em>
+      {% elif analysis.anomaly_threshold %}
+        <em>阈值 ¥{{ "%.2f"|format(analysis.anomaly_threshold) }}</em>
+      {% else %}
+        <em>样本不足</em>
+      {% endif %}
+    </div>
+  </div>
+
+  <ul class="insights">
+    {% for s in analysis.insights %}<li>{{ s }}</li>{% endfor %}
+  </ul>
+  <p class="note">
+    口径：统计最近一个完整月份，避免月初数据不完整导致环比失真；
+    异常支出按「均值 + 2σ」识别，已剔除居住类固定支出。
+  </p>
+</div>
 
 {% macro category_chart(title, bars, slices, total, total_label) %}
 <div class="card">
@@ -71,7 +155,7 @@
 {{ category_chart(this_month + " 收入分类", income_bars, income_slices, income_total, "收入") }}
 
 <div class="card">
-  <h2>近 6 个月收支趋势</h2>
+  <h2>近 6 个完整月收支趋势</h2>
   <div style="margin-bottom: 0.5rem;">
     <span><span class="legend-dot" style="background:#2a78d6"></span>收入</span>
     <span style="margin-left:1rem"><span class="legend-dot" style="background:#eb6834"></span>支出</span>
